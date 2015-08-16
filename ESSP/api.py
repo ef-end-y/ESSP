@@ -47,7 +47,6 @@ class ESSP(object):
         self._logger.debug('[ESSP] Start')
 
     def reset(self):
-        # resets the BNV
         return self._simple_cmd(1)
 
     def set_inhibits(self, lowchannels, highchannels):
@@ -113,19 +112,27 @@ class ESSP(object):
         return poll_data
 
     def reject_note(self):
-        # Reject the current note
+        """
+            Reject the current note
+        """
         return self._simple_cmd(8)
 
     def disable(self):
-        # Disables the device
+        """
+            Disable the device
+        """
         return self._simple_cmd(9)
 
     def enable(self):
-        # Resume from disable()'d state
+        """
+            Enable the device
+        """
         return self._simple_cmd(0xA)
 
     def serial_number(self):
-        # Returns serialnumber
+        """
+            Returns serial number
+        """
         try:
             return self._send(0xC)
         except ESSPException:
@@ -153,7 +160,9 @@ class ESSP(object):
         return unit_data
 
     def channel_values(self):
-        # Returns the real values of the channels
+        """
+            Returns the real values of the channels
+        """
         try:
             result = self._send('e')
             channels = result[0]
