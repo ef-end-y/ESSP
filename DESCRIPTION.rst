@@ -5,6 +5,7 @@ Examples
 --------
 
 .. code-block:: python
+
     from ESSP.api import ESSP
     essp = ESSP('/dev/ttyACM0')
     essp.enable()
