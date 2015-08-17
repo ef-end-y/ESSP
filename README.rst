@@ -7,12 +7,11 @@ Examples
 .. code-block:: python
 
   import time
-  from ESSP.api import ESSP
-  essp = ESSP('/dev/ttyACM0')
+  from essp_api import EsspApi
+  essp = EsspApi('/dev/ttyACM0')
   essp.enable()
   while True:
       for p in essp.poll():
-          if p['status'] == ESSP.CREDIT_NOTE:
-              print 'A note has passed through the device. A note code: '\
-                + str(p['param'])
+          if p['status'] == essp.CREDIT_NOTE:
+              print 'A note (code=%s) has passed through the device' % p['param']
       time.sleep(0.5)

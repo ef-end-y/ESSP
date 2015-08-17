@@ -1,25 +1,24 @@
 import sys
 import logging
 import time
-from ESSP.api import ESSP
+from essp_api import EsspApi
 
-k = ESSP('/dev/ttyACM0', logger_handler=logging.StreamHandler(sys.stdout))
-k.sync()
-k.enable_higher_protocol()
-k.set_inhibits(k.easy_inhibit([1, 1, 1, 1, 1, 1, 1]), '0')
-k.enable()
+essp = EsspApi('/dev/ttyACM0', logger_handler=logging.StreamHandler(sys.stdout))
+essp.sync()
+essp.enable_higher_protocol()
+essp.set_inhibits(essp.easy_inhibit([1, 1, 1, 1, 1, 1, 1]), '0')
+essp.enable()
 while True:
-    poll = k.poll()
+    poll = essp.poll()
     for p in poll:
         print p
-        if p['status'] == ESSP.READ_NOTE and p['param'] > 0:
+        if p['status'] == essp.READ_NOTE and p['param'] > 0:
             for i in range(0, 10):
-                k.hold()
+                essp.hold()
                 print 'Hold...'
                 time.sleep(0.5)
             if p['param'] == 2:
-                k.reject_note()
-        if p['status'] == ESSP.CREDIT_NOTE:
-            print 'Credit: ' + str(p['param'])
+                essp.reject_note()
+        if p['status'] == EsspApi.CREDIT_NOTE:
+            print 'Credit: %s' % p['param']
     time.sleep(0.5)
-

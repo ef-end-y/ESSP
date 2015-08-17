@@ -12,7 +12,7 @@ class NullHandler(logging.Handler):
         pass
 
 
-class ESSP(object):
+class EsspApi(object):
     READ_NOTE = 0xEF
     CREDIT_NOTE = 0xEE
     FRAUD_ATTEMPT = 0xE6

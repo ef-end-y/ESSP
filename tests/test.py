@@ -1,4 +1,4 @@
-from ESSP.api import ESSP
+from essp_api import EsspApi
 import unittest
 import serial
 
@@ -44,18 +44,18 @@ serial.Serial = SerialMock
 
 class TestESSP(unittest.TestCase):
     def test(self):
-        p = ESSP('')
+        p = EsspApi('')
         self.assertTrue(p.sync())
         self.assertIsInstance(p.poll(), list)
         self.assertIn(''.join(['%02x' % ord(c) for c in p._serial.sent]), ('7f8001071202', '7f0001071188'))
         res = p.poll()[0]
-        self.assertEqual(res['status'], ESSP.READ_NOTE)
+        self.assertEqual(res['status'], p.READ_NOTE)
         self.assertEqual(res['param'], 0)
         res = p.poll()[0]
-        self.assertEqual(res['status'], ESSP.READ_NOTE)
+        self.assertEqual(res['status'], p.READ_NOTE)
         self.assertEqual(res['param'], 4)
         res = p.poll()[0]
-        self.assertEqual(res['status'], ESSP.CREDIT_NOTE)
+        self.assertEqual(res['status'], p.CREDIT_NOTE)
         self.assertEqual(res['param'], 4)
         self.assertEqual(p.easy_inhibit([1, 0, 1, 0, 1, 1, 1, 1]), 'f5')
 
