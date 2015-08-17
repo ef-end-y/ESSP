@@ -1,6 +1,15 @@
 Encrypted Smiley Secure Protocol Python Library
 ===============================================
 
+Installation
+------------
+
+.. code-block:: bash
+
+  git clone https://github.com/ef-end-y/ESSP.git
+  cd ESSP/
+  pip install .
+
 Examples
 --------
 
