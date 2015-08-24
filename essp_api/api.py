@@ -47,6 +47,7 @@ class EsspApi(object):
         self._logger.debug('[ESSP] Start')
 
     def reset(self):
+        self._logger.debug('[ESSP] Reset')
         return self._simple_cmd(1)
 
     def set_inhibits(self, lowchannels, highchannels):
@@ -57,12 +58,12 @@ class EsspApi(object):
         return self._simple_cmd([2, lowchannels, highchannels])
 
     def display_on(self):
-        # Illuminate bezel
+        self._logger.debug('[ESSP] Display on')
         result = self._send(3)
         return result
 
     def display_off(self):
-        # force the device bezel to not be illuminated even if the device is enabled
+        self._logger.debug('[ESSP] Display off')
         result = self._send(4)
         return result
 
@@ -112,21 +113,15 @@ class EsspApi(object):
         return poll_data
 
     def reject_note(self):
-        """
-            Reject the current note
-        """
+        self._logger.debug('[ESSP] Reject the note')
         return self._simple_cmd(8)
 
     def disable(self):
-        """
-            Disable the device
-        """
+        self._logger.debug('[ESSP] Disable the device')
         return self._simple_cmd(9)
 
     def enable(self):
-        """
-            Enable the device
-        """
+        self._logger.debug('[ESSP] Enable the device')
         return self._simple_cmd(0xA)
 
     def serial_number(self):
@@ -222,6 +217,7 @@ class EsspApi(object):
             return 0
 
     def hold(self):
+        self._logger.debug('[ESSP] Hold')
         return self._simple_cmd(0x18)
 
     def enable_higher_protocol(self):
@@ -274,13 +270,13 @@ class EsspApi(object):
 
         self._serial.write(''.join(request).decode('hex'))
 
-        response = self.read()
+        response = self._read()
         return response
     
     def _read_chars(self, count=1):
             return [ord(c) for c in self._serial.read(count)]
 
-    def read(self):
+    def _read(self):
         response = []
         step = 0
         waiting_chars = 1

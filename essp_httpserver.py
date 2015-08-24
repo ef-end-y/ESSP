@@ -160,7 +160,7 @@ def essp_process(queue_request, queue_response):
             if cmd in cmds:
                 res['result'] = cmds[cmd]()()
             elif cmd == 'start':
-                res['result'] = bool(essp.sync() and essp.enable_higher_protocol())
+                res['result'] = bool(essp.sync() and essp.enable_higher_protocol() and essp.disable())
             queue_response.put(res)
             continue
         poll = essp.poll()
