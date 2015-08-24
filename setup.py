@@ -16,6 +16,6 @@ setup(
     ],
     keywords='essp banknote validators',
     packages=find_packages(exclude=['contrib', 'docs', 'tests*']),
-    install_requires=['pyserial'],
+    install_requires=['pyserial', 'webob'],
     tests_require=['nose'],
 )
