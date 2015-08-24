@@ -47,7 +47,7 @@ class EsspApi(object):
         self._logger.debug('[ESSP] Start')
 
     def reset(self):
-        self._logger.debug('[ESSP] Reset')
+        self._logger.debug('[ESSP][cmd] Reset')
         return self._simple_cmd(1)
 
     def set_inhibits(self, lowchannels, highchannels):
@@ -58,12 +58,12 @@ class EsspApi(object):
         return self._simple_cmd([2, lowchannels, highchannels])
 
     def display_on(self):
-        self._logger.debug('[ESSP] Display on')
+        self._logger.debug('[ESSP][cmd] Display on')
         result = self._send(3)
         return result
 
     def display_off(self):
-        self._logger.debug('[ESSP] Display off')
+        self._logger.debug('[ESSP][cmd] Display off')
         result = self._send(4)
         return result
 
@@ -113,15 +113,15 @@ class EsspApi(object):
         return poll_data
 
     def reject_note(self):
-        self._logger.debug('[ESSP] Reject the note')
+        self._logger.debug('[ESSP][cmd] Reject the note')
         return self._simple_cmd(8)
 
     def disable(self):
-        self._logger.debug('[ESSP] Disable the device')
+        self._logger.debug('[ESSP][cmd] Disable the device')
         return self._simple_cmd(9)
 
     def enable(self):
-        self._logger.debug('[ESSP] Enable the device')
+        self._logger.debug('[ESSP][cmd] Enable the device')
         return self._simple_cmd(0xA)
 
     def serial_number(self):
@@ -179,6 +179,7 @@ class EsspApi(object):
             return []
 
     def sync(self):
+        self._logger.debug('[ESSP][cmd] Sync')
         self._sequence = False
         return self._simple_cmd(0x11)
 
@@ -217,7 +218,7 @@ class EsspApi(object):
             return 0
 
     def hold(self):
-        self._logger.debug('[ESSP] Hold')
+        self._logger.debug('[ESSP][cmd] Hold')
         return self._simple_cmd(0x18)
 
     def enable_higher_protocol(self):
