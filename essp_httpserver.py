@@ -165,7 +165,8 @@ def essp_process(queue_request, queue_response):
             continue
         poll = essp.poll()
         for p in poll:
-            queue_response.put({'cmd': 'poll', 'status': p['status'], 'param': p['param']})
+            if p['status'] != EsspApi.DISABLED:
+                queue_response.put({'cmd': 'poll', 'status': p['status'], 'param': p['param']})
         sleep(1)
 
 
