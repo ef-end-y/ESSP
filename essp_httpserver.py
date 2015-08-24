@@ -113,6 +113,7 @@ def http_server_process():
     app.add_route('/display_on', API.simple_cmd, cmd='display_on')
     app.add_route('/display_off', API.simple_cmd, cmd='display_off')
     app.add_route('/poll', API.poll)
+    app.add_route('/start', API.simple_cmd, cmd='start')
     httpd = make_server(BIND_ADDRESS, BIND_PORT, app)
     httpd.serve_forever()
 
@@ -155,12 +156,17 @@ def essp_process(queue_request, queue_response):
             pass
         else:
             cmd = data['cmd']
+            res = {'cmd': cmd, 'result': False}
             if cmd in cmds:
-                queue_response.put({'cmd': cmd, 'result': cmds[cmd]()()})
+                res['result'] = cmds[cmd]()()
+            elif cmd == 'start':
+                res['result'] = bool(essp.sync() and essp.enable_higher_protocol())
+            queue_response.put(res)
+            continue
         poll = essp.poll()
         for p in poll:
             queue_response.put({'cmd': 'poll', 'status': p['status'], 'param': p['param']})
-        sleep(0.01)
+        sleep(1)
 
 
 p = Process(target=essp_process, args=(queue_request, queue_response))

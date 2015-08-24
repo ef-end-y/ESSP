@@ -20,13 +20,13 @@ class EsspApi(object):
     NOTE_CLEARED_INTO_CASHBOX = 0xE2
     NOTE_REJECTING = 0xED
     NOTE_REJECTED = 0xEC
+    DISABLED = 0xE8
+    STACKER_FULL = 0xE7
     # 0xF1 = Slave Reset (right after booting up)
     # 0xCC = Stacking
     # 0xEB = Stacked
     # 0xEA = Safe Jam
     # 0xE9 = Unsafe Jam
-    # 0xE8 = Disabled
-    # 0xE7 = Stacker full
     # 0xE3 = Cash Box Removed (Protocol v3)
     # 0xE4 = Cash Box Replaced (Protocol v3)
     two_parameters_status = (READ_NOTE, CREDIT_NOTE, FRAUD_ATTEMPT, NOTE_CLEARED_FROM_RESET, NOTE_CLEARED_INTO_CASHBOX)
