@@ -13,10 +13,12 @@ from multiprocessing import Process, Queue
 
 LOG_FILE = './essp_server.log'
 BIND_PORT = 8080
-BIND_ADDRESS = '127.0.0.1'
+BIND_ADDRESS = '0.0.0.0'
+TEST = False
 
 queue_request = Queue()
 queue_response = Queue()
+
 
 class SerialMock(object):
     POLL_CMD = ('7f0001071188'.decode('hex'), '7f8001071202'.decode('hex'))
@@ -53,8 +55,8 @@ class SerialMock(object):
     def inWaiting(self):
         return len(self.response)
 
-
-#serial.Serial = SerialMock
+if TEST:
+    serial.Serial = SerialMock
 
 
 def load_controller(string):
