@@ -3,6 +3,7 @@ import sys
 import logging
 import serial
 import json
+import argparse
 from wsgiref.simple_server import make_server
 from webob.dec import wsgify
 from webob import Request, Response, exc
@@ -13,11 +14,10 @@ from multiprocessing import Process, Queue
 
 LOG_FILE = './essp_server.log'
 BIND_PORT = 8080
-BIND_ADDRESS = '0.0.0.0'
-TEST = False
+BIND_ADDRESS = '127.0.0.1'
 
-queue_request = Queue()
-queue_response = Queue()
+Queue_request = Queue()
+Queue_response = Queue()
 
 
 class SerialMock(object):
@@ -54,10 +54,6 @@ class SerialMock(object):
 
     def inWaiting(self):
         return len(self.response)
-
-if TEST:
-    serial.Serial = SerialMock
-
 
 def load_controller(string):
     module_name, func_name = string.split(':', 1)
@@ -107,23 +103,15 @@ class Router(object):
         return exc.HTTPNotFound()(environ, start_response)
 
 
-def http_server_process():
-    app = Router()
-    app.add_route('/{cmd:sync|reset|enable|disable|hold|}', API.simple_cmd)
-    app.add_route('/display_on', API.simple_cmd, cmd='display_on')
-    app.add_route('/display_off', API.simple_cmd, cmd='display_off')
-    app.add_route('/poll', API.poll)
-    app.add_route('/start', API.simple_cmd, cmd='start')
-    httpd = make_server(BIND_ADDRESS, BIND_PORT, app)
-    httpd.serve_forever()
-
-
 class API(object):
+    queue_request = Queue_request
+    queue_response = Queue_response
+
     @wsgify
     @staticmethod
     def simple_cmd(req):
         cmd = req.urlvars['cmd']
-        queue_request.put({'cmd': cmd})
+        API.queue_request.put({'cmd': cmd})
         return Response('ok')
 
     @wsgify
@@ -132,14 +120,19 @@ class API(object):
         data = []
         while True:
             try:
-                data.append(queue_response.get(block=False))
+                data.append(API.queue_response.get(block=False))
             except Exception:
                 break
         return Response(json.dumps(data))
 
 
-def essp_process(queue_request, queue_response):
-    essp = EsspApi('/dev/ttyACM0')
+def essp_process(queue_request, queue_response, verbose, test):
+    if test:
+        serial.Serial = SerialMock
+    lh = logging.StreamHandler(sys.stdout) if verbose else None
+    verbose = verbose and verbose > 1
+    essp = EsspApi('/dev/ttyACM0', logger_handler=lh, verbose=verbose)
+    logger = essp.get_logger()
     cmds = {
         'sync': lambda: essp.sync,
         'reset': lambda: essp.reset,
@@ -155,6 +148,7 @@ def essp_process(queue_request, queue_response):
         except Exception:
             pass
         else:
+            logger.debug('[HTTP ESSP] command: %s' % data['cmd'])
             cmd = data['cmd']
             res = {'cmd': cmd, 'result': False}
             if cmd in cmds:
@@ -170,8 +164,32 @@ def essp_process(queue_request, queue_response):
         sleep(1)
 
 
-p = Process(target=essp_process, args=(queue_request, queue_response))
-p.start()
-http_server_process()
+class StartServer(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        app = Router()
+        app.add_route('/{cmd:sync|reset|enable|disable|hold|}', API.simple_cmd)
+        app.add_route('/display_on', API.simple_cmd, cmd='display_on')
+        app.add_route('/display_off', API.simple_cmd, cmd='display_off')
+        app.add_route('/poll', API.poll)
+        app.add_route('/start', API.simple_cmd, cmd='start')
+        httpd = make_server(namespace.host, namespace.port, app)
+        p = Process(target=essp_process, args=(Queue_request, Queue_response, namespace.verbose, namespace.test))
+        p.start()
+        httpd.serve_forever()
+
+
+p = argparse.ArgumentParser(description='Essp http server')
+p.add_argument('start', help='Start server', action=StartServer)
+p.add_argument(
+    '-p', '--port', default=BIND_PORT,
+    help='Port to serve on (default %s)' % BIND_PORT)
+p.add_argument(
+    '-H', '--host', default=BIND_ADDRESS,
+    help='Host to serve on (default %s; 0.0.0.0 to make public)' % BIND_ADDRESS)
+p.add_argument('-t', '--test', help='Test', action='count')
+p.add_argument('-v', '--verbose', action='count', help='-vv: very verbose')
+args = p.parse_args()
+
+
 
 

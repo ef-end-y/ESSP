@@ -22,13 +22,12 @@ class EsspApi(object):
     NOTE_REJECTED = 0xEC
     DISABLED = 0xE8
     STACKER_FULL = 0xE7
-    # 0xF1 = Slave Reset (right after booting up)
-    # 0xCC = Stacking
-    # 0xEB = Stacked
-    # 0xEA = Safe Jam
-    # 0xE9 = Unsafe Jam
-    # 0xE3 = Cash Box Removed (Protocol v3)
-    # 0xE4 = Cash Box Replaced (Protocol v3)
+    SLAVE_RESET = 0xF1  # right after booting up
+    STACKING = 0xCC
+    STACKED = 0xEB
+    CASH_BOX_REMOVED = 0xE3
+    CASH_BOX_REPLACED = 0xE4
+
     two_parameters_status = (READ_NOTE, CREDIT_NOTE, FRAUD_ATTEMPT, NOTE_CLEARED_FROM_RESET, NOTE_CLEARED_INTO_CASHBOX)
 
     _logger = None
@@ -36,38 +35,37 @@ class EsspApi(object):
     _id = None
     _sequence = True
 
-    def __init__(self, serialport='/dev/ttyUSB0', essp_id=0, logger_handler=None):
+    def __init__(self, serialport='/dev/ttyUSB0', essp_id=0, logger_handler=None, verbose=False):
         self._logger = logging.getLogger(__name__)
         self._logger.addHandler(logger_handler if logger_handler else NullHandler())
-        self._logger.setLevel(logging.DEBUG)
-
+        self._logger.setLevel(logging.DEBUG if verbose else logging.INFO)
         self._serial = serial.Serial(serialport, 9600)
         self._id = essp_id
+        self._logger.info('[ESSP] Start')
 
-        self._logger.debug('[ESSP] Start')
+    def get_logger(self):
+        return self._logger
 
     def reset(self):
-        self._logger.debug('[ESSP][cmd] Reset')
+        self._logger.info('[ESSP][cmd] Reset')
         return self._simple_cmd(1)
 
-    def set_inhibits(self, lowchannels, highchannels):
-        # lowchannels: Channel 1 to 8
-        # highchannels: Channel 9 to 16
-        # takes a bitmask
-        # For more ease: use easy_inhibit() as helper
-        return self._simple_cmd([2, lowchannels, highchannels])
+    def set_inhibits(self, low_channels, high_channels):
+        self._logger.info('[ESSP][cmd] Set inhibits')
+        return self._simple_cmd([2, low_channels, high_channels])
 
     def display_on(self):
-        self._logger.debug('[ESSP][cmd] Display on')
+        self._logger.info('[ESSP][cmd] Display on')
         result = self._send(3)
         return result
 
     def display_off(self):
-        self._logger.debug('[ESSP][cmd] Display off')
+        self._logger.info('[ESSP][cmd] Display off')
         result = self._send(4)
         return result
 
     def setup_request(self):
+        self._logger.info('[ESSP][cmd] Setup request')
         try:
             result = self._send(5)
             channels = result[11]
@@ -93,6 +91,7 @@ class EsspApi(object):
         return True
 
     def poll(self):
+        self._logger.debug('[ESSP][cmd] Polling ...')
         poll_data = []
         try:
             result = self._send(7)
@@ -113,15 +112,15 @@ class EsspApi(object):
         return poll_data
 
     def reject_note(self):
-        self._logger.debug('[ESSP][cmd] Reject the note')
+        self._logger.info('[ESSP][cmd] Reject the note')
         return self._simple_cmd(8)
 
     def disable(self):
-        self._logger.debug('[ESSP][cmd] Disable the device')
+        self._logger.info('[ESSP][cmd] Disable the device')
         return self._simple_cmd(9)
 
     def enable(self):
-        self._logger.debug('[ESSP][cmd] Enable the device')
+        self._logger.info('[ESSP][cmd] Enable the device')
         return self._simple_cmd(0xA)
 
     def serial_number(self):
@@ -179,7 +178,7 @@ class EsspApi(object):
             return []
 
     def sync(self):
-        self._logger.debug('[ESSP][cmd] Sync')
+        self._logger.info('[ESSP][cmd] Sync')
         self._sequence = False
         return self._simple_cmd(0x11)
 
@@ -218,7 +217,7 @@ class EsspApi(object):
             return 0
 
     def hold(self):
-        self._logger.debug('[ESSP][cmd] Hold')
+        self._logger.info('[ESSP][cmd] Hold')
         return self._simple_cmd(0x18)
 
     def enable_higher_protocol(self):
@@ -305,17 +304,19 @@ class EsspApi(object):
                 continue
 
             response = [('%02x' % c).lower() for c in response]
+
             self._logger.debug('[ESSP] RECIVE:  ' + ' '.join(response))
 
             crc = self._crc(response[1:-2])
             if crc != response[-2:]:
-                self._logger.debug('[ESSP] Failed to verify crc: ' + str(crc))
+                self._logger.warn('[ESSP] RECIVE:  ' + ' '.join(response))
+                self._logger.warn('[ESSP] Failed to verify crc: ' + str(crc))
 
             if len(response) < 6:
                 raise ESSPException()
             response = [int(c, 16) for c in response]
             if response[3] != 0xf0:
-                self._logger.debug('[ESSP] Error 0x%02x' % response[3])
+                self._logger.info('[ESSP] Error 0x%02x' % response[3])
                 raise ESSPException()
             return response[4:-2]
 
