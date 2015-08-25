@@ -12,6 +12,17 @@ class NullHandler(logging.Handler):
         pass
 
 
+class SerialNull(object):
+    def write(self, data):
+        pass
+
+    def read(self, count=None):
+        return ''
+
+    def inWaiting(self):
+        return 0
+
+
 class EsspApi(object):
     READ_NOTE = 0xEF
     CREDIT_NOTE = 0xEE
@@ -31,17 +42,32 @@ class EsspApi(object):
     two_parameters_status = (READ_NOTE, CREDIT_NOTE, FRAUD_ATTEMPT, NOTE_CLEARED_FROM_RESET, NOTE_CLEARED_INTO_CASHBOX)
 
     _logger = None
+    _serialport = None
     _serial = None
     _id = None
     _sequence = True
+    _serialnull = None
 
     def __init__(self, serialport='/dev/ttyUSB0', essp_id=0, logger_handler=None, verbose=False):
         self._logger = logging.getLogger(__name__)
         self._logger.addHandler(logger_handler if logger_handler else NullHandler())
         self._logger.setLevel(logging.DEBUG if verbose else logging.INFO)
-        self._serial = serial.Serial(serialport, 9600)
+        self._serialport = serialport
+        self._serialnull = SerialNull()
         self._id = essp_id
         self._logger.info('[ESSP] Start')
+
+    @property
+    def _device(self):
+        if self._serial:
+            return self._serial
+        try:
+            self._serial = serial.Serial(self._serialport, 9600)
+        except Exception as e:
+            self._logger.error('[ESSP] %s' % e)
+            time.sleep(10)
+            return self._serialnull
+        return self._serial
 
     def get_logger(self):
         return self._logger
@@ -108,7 +134,7 @@ class EsspApi(object):
             poll_data.append({
                 'status': c,
                 'param': param
-            })     
+            })
         return poll_data
 
     def reject_note(self):
@@ -268,13 +294,13 @@ class EsspApi(object):
 
         self._logger.debug('[ESSP] SEND: ' + ' '.join(request))
 
-        self._serial.write(''.join(request).decode('hex'))
+        self._device.write(''.join(request).decode('hex'))
 
         response = self._read()
         return response
-    
+
     def _read_chars(self, count=1):
-            return [ord(c) for c in self._serial.read(count)]
+            return [ord(c) for c in self._device.read(count)]
 
     def _read(self):
         response = []
@@ -282,7 +308,7 @@ class EsspApi(object):
         waiting_chars = 1
         timeout = time.time() + 1.1
         while time.time() < timeout:
-            ready_chars = self._serial.inWaiting()
+            ready_chars = self._device.inWaiting()
             if ready_chars < waiting_chars:
                 time.sleep(0.01)
                 continue
@@ -320,6 +346,7 @@ class EsspApi(object):
                 raise ESSPException()
             return response[4:-2]
 
+        self._serial = None
         raise ESSPException()
 
     @staticmethod
