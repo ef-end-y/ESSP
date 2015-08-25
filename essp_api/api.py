@@ -294,7 +294,16 @@ class EsspApi(object):
 
         self._logger.debug('[ESSP] SEND: ' + ' '.join(request))
 
-        self._device.write(''.join(request).decode('hex'))
+        send_data = ''.join(request).decode('hex')
+        try:
+            self._device.write(send_data)
+        except:
+            self._serial = None
+            try:
+                self._device.write(send_data)
+            except:
+                self._serial = None
+                return ''
 
         response = self._read()
         return response
