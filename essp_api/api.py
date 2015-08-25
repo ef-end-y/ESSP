@@ -13,13 +13,16 @@ class NullHandler(logging.Handler):
 
 
 class SerialNull(object):
-    def write(self, data):
-        pass
+    @staticmethod
+    def write(*args, **kwargs):
+        return
 
-    def read(self, count=None):
+    @staticmethod
+    def read(*args, **kwargs):
         return ''
 
-    def inWaiting(self):
+    @staticmethod
+    def inWaiting(*args, **kwargs):
         return 0
 
 
@@ -94,7 +97,7 @@ class EsspApi(object):
         self._logger.info('[ESSP][cmd] Setup request')
         try:
             result = self._send(5)
-            channels = result[11]
+            channels = int(result[11])
             return {
                 'unit type': result[0],
                 'firmware': ''.join([chr(c) for c in result[1:5]]),
@@ -294,19 +297,19 @@ class EsspApi(object):
 
         self._logger.debug('[ESSP] SEND: ' + ' '.join(request))
 
-        send_data = ''.join(request).decode('hex')
-        try:
-            self._device.write(send_data)
-        except:
-            self._serial = None
-            try:
-                self._device.write(send_data)
-            except:
-                self._serial = None
-                return ''
+        self._send_2tries(''.join(request).decode('hex'))
 
-        response = self._read()
-        return response
+        return self._read()
+
+    def _send_2tries(self, data):
+        for i in (0, 1):
+            try:
+                self._device.write(data)
+            except Exception:
+                self._serial = None
+            else:
+                return
+        raise ESSPException
 
     def _read_chars(self, count=1):
             return [ord(c) for c in self._device.read(count)]

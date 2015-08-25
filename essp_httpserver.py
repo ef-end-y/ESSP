@@ -165,28 +165,42 @@ def essp_process(queue_request, queue_response, verbose, test):
         sleep(1)
 
 
-class StartServer(argparse.Action):
-    def __call__(self, parser, namespace, values, option_string=None):
-        app = Router()
-        app.add_route('/{cmd:sync|reset|enable|disable|hold|}', API.simple_cmd)
-        app.add_route('/display_on', API.simple_cmd, cmd='display_on')
-        app.add_route('/display_off', API.simple_cmd, cmd='display_off')
-        app.add_route('/poll', API.poll)
-        app.add_route('/start', API.simple_cmd, cmd='start')
-        httpd = make_server(namespace.host, namespace.port, app)
-        p = Process(target=essp_process, args=(Queue_request, Queue_response, namespace.verbose, namespace.test))
-        p.start()
+def start_server(namespace):
+    app = Router()
+    app.add_route('/{cmd:sync|reset|enable|disable|hold|}', API.simple_cmd)
+    app.add_route('/display_on', API.simple_cmd, cmd='display_on')
+    app.add_route('/display_off', API.simple_cmd, cmd='display_off')
+    app.add_route('/poll', API.poll)
+    app.add_route('/start', API.simple_cmd, cmd='start')
+    httpd = make_server(namespace.host, namespace.port, app)
+    try:
         httpd.serve_forever()
+    except KeyboardInterrupt:
+        httpd.server_close()
+
+
+class Start(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        p1 = Process(target=essp_process, args=(Queue_request, Queue_response, namespace.verbose, namespace.test))
+        p1.start()
+        p2 = Process(target=start_server, args=(namespace,))
+        p2.start()
+        try:
+            p1.join()
+            p2.join()
+        except KeyboardInterrupt:
+            print 'Keyboard interrupt'
+            p1.terminate()
+            p1.join()
+            p2.terminate()
+            p2.join()
 
 
 p = argparse.ArgumentParser(description='Essp http server')
-p.add_argument('start', help='Start server', action=StartServer)
-p.add_argument(
-    '-p', '--port', default=BIND_PORT,
-    help='Port to serve on (default %s)' % BIND_PORT)
-p.add_argument(
-    '-H', '--host', default=BIND_ADDRESS,
-    help='Host to serve on (default %s; 0.0.0.0 to make public)' % BIND_ADDRESS)
+p.add_argument('start', help='Start server', action=Start)
+p.add_argument('-p', '--port', default=BIND_PORT, help='Port to serve on (default %s)' % BIND_PORT)
+p.add_argument('-H', '--host', default=BIND_ADDRESS,
+               help='Host to serve on (default %s; 0.0.0.0 to make public)' % BIND_ADDRESS)
 p.add_argument('-t', '--test', help='Test', action='count')
 p.add_argument('-v', '--verbose', action='count', help='-vv: very verbose')
 args = p.parse_args()
