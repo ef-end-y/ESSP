@@ -83,13 +83,16 @@ class Router(object):
 
     def __call__(self, environ, start_response):
         req = Request(environ)
-        for regex, controller, vars in self.routes:
+        for regex, controller, kwvars in self.routes:
             match = regex.match(req.path_info)
             if match:
                 req.urlvars = match.groupdict()
-                req.urlvars.update(vars)
-                start_response('200 OK', RESP_HEADERS)
-                return [controller(req)]
+                req.urlvars.update(kwvars)
+                res = json.dumps(controller(req))
+                headers = RESP_HEADERS[:]
+                headers.append(('Content-Length', str(len(res))),)
+                start_response('200 OK', headers)
+                return [res]
         return exc.HTTPNotFound()(environ, start_response)
 
 
@@ -115,7 +118,7 @@ class API(object):
                 data.append(API.queue_response.get(block=False))
             except Exception:
                 break
-        return json.dumps(data)
+        return data
 
 
 def essp_process(queue_request, queue_response, verbose, test):
