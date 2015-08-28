@@ -5,13 +5,12 @@ import serial
 import json
 import argparse
 from wsgiref.simple_server import make_server
-from webob.dec import wsgify
-from webob import Request, Response, exc
+from webob import Request, exc
 from essp_api import EsspApi
 from time import sleep
 from multiprocessing import Process, Queue
 
-
+RESP_HEADERS = [('Access-Control-Allow-Origin', '*')]
 LOG_FILE = './essp_server.log'
 BIND_PORT = 8080
 BIND_ADDRESS = '127.0.0.1'
@@ -32,17 +31,13 @@ class SerialMock(object):
         self.sent = data
         if data in self.POLL_CMD:
             self.poll_count += 1
-            step = self.poll_count
-            if step == 2:
-                # a note is in the process of being scanned
+            if self.poll_count == 2:
                 self.response = '7f8003f0ef00cfca'
                 return
-            if step == 3:
-                # valid note has been scanned, 4 channel
+            if self.poll_count == 3:
                 self.response = '7f8003f0ef04d44a'
                 return
-            if step == 4:
-                # a note has passed through the device
+            if self.poll_count == 4:
                 self.response = '7f0004f0ee04cce0d6'
                 return
         self.response = '7f8001f02380'
@@ -55,12 +50,6 @@ class SerialMock(object):
     def inWaiting(self):
         return len(self.response)
 
-def load_controller(string):
-    module_name, func_name = string.split(':', 1)
-    __import__(module_name)
-    module = sys.modules[module_name]
-    func = getattr(module, func_name)
-    return func
 
 var_regex = re.compile(r'''
     \{          # The exact character "{"
@@ -89,8 +78,8 @@ class Router(object):
     def __init__(self):
         self.routes = []
 
-    def add_route(self, template, view, **vars):
-        self.routes.append((re.compile(template_to_regex(template)), view, vars))
+    def add_route(self, template, view, **kwargs):
+        self.routes.append((re.compile(template_to_regex(template)), view, kwargs))
 
     def __call__(self, environ, start_response):
         req = Request(environ)
@@ -99,7 +88,8 @@ class Router(object):
             if match:
                 req.urlvars = match.groupdict()
                 req.urlvars.update(vars)
-                return controller(environ, start_response)
+                start_response('200 OK', RESP_HEADERS)
+                return [controller(req)]
         return exc.HTTPNotFound()(environ, start_response)
 
 
@@ -107,14 +97,16 @@ class API(object):
     queue_request = Queue_request
     queue_response = Queue_response
 
-    @wsgify
+    @staticmethod
+    def index(req):
+        return 'ok'
+
     @staticmethod
     def simple_cmd(req):
         cmd = req.urlvars['cmd']
         API.queue_request.put({'cmd': cmd})
-        return Response('ok')
+        return 'ok'
 
-    @wsgify
     @staticmethod
     def poll(req):
         data = []
@@ -123,7 +115,7 @@ class API(object):
                 data.append(API.queue_response.get(block=False))
             except Exception:
                 break
-        return Response(json.dumps(data))
+        return json.dumps(data)
 
 
 def essp_process(queue_request, queue_response, verbose, test):
@@ -167,7 +159,8 @@ def essp_process(queue_request, queue_response, verbose, test):
 
 def start_server(namespace):
     app = Router()
-    app.add_route('/{cmd:sync|reset|enable|disable|hold|}', API.simple_cmd)
+    app.add_route('/', API.index)
+    app.add_route('/{cmd:sync|reset|enable|disable|hold}', API.simple_cmd)
     app.add_route('/display_on', API.simple_cmd, cmd='display_on')
     app.add_route('/display_off', API.simple_cmd, cmd='display_off')
     app.add_route('/poll', API.poll)
