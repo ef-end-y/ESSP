@@ -144,7 +144,7 @@ def essp_process(queue_request, queue_response, verbose, test):
         except Exception:
             pass
         else:
-            logger.debug('[HTTP ESSP] command: %s' % data['cmd'])
+            logger.info('[HTTP ESSP] command: %s' % data['cmd'])
             cmd = data['cmd']
             res = {'cmd': cmd, 'result': False}
             if cmd in cmds:
