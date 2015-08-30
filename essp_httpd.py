@@ -161,7 +161,7 @@ def essp_process(queue_request, queue_response, verbose, test):
         for event in poll:
             if event['status'] == EsspApi.DISABLED:
                 continue
-            if event['status'] == EsspApi.READ_NOTE and not accept_note:
+            if event['status'] == EsspApi.READ_NOTE and event['param'] and not accept_note:
                 essp.hold()
             queue_response.put({'cmd': 'poll', 'status': event['status'], 'param': event['param']})
         sleep(1)
@@ -175,7 +175,7 @@ def start_server(namespace):
     app.add_route('/display_off', API.simple_cmd, cmd='display_off')
     app.add_route('/poll', API.poll)
     app.add_route('/start', API.simple_cmd, cmd='start')
-    httpd = make_server(namespace.host, namespace.port, app)
+    httpd = make_server(namespace.host, int(namespace.port), app)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
