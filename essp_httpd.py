@@ -137,6 +137,7 @@ def essp_process(queue_request, queue_response, verbose, test):
         'display_on': lambda: essp.display_on,
         'display_off': lambda: essp.display_off,
     }
+    accept_note = False
     while True:
         try:
             data = queue_request.get(block=False)
@@ -151,19 +152,25 @@ def essp_process(queue_request, queue_response, verbose, test):
             elif cmd == 'start':
                 res['result'] = bool(essp.sync() and essp.enable_higher_protocol() and essp.disable() and
                                      essp.set_inhibits(essp.easy_inhibit([1, 1, 1, 1, 1, 1, 1]), '0'))
+            elif cmd == 'accept':
+                accept_note = True
+                res['result'] = True
             queue_response.put(res)
             continue
         poll = essp.poll()
-        for p in poll:
-            if p['status'] != EsspApi.DISABLED:
-                queue_response.put({'cmd': 'poll', 'status': p['status'], 'param': p['param']})
+        for event in poll:
+            if event['status'] == EsspApi.DISABLED:
+                continue
+            if event['status'] == EsspApi.READ_NOTE and not accept_note:
+                essp.hold()
+            queue_response.put({'cmd': 'poll', 'status': event['status'], 'param': event['param']})
         sleep(1)
 
 
 def start_server(namespace):
     app = Router()
     app.add_route('/', API.index)
-    app.add_route('/{cmd:sync|reset|enable|disable|hold}', API.simple_cmd)
+    app.add_route('/{cmd:sync|reset|enable|disable|hold|accept}', API.simple_cmd)
     app.add_route('/display_on', API.simple_cmd, cmd='display_on')
     app.add_route('/display_off', API.simple_cmd, cmd='display_off')
     app.add_route('/poll', API.poll)

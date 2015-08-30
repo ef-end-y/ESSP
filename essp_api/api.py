@@ -27,18 +27,18 @@ class SerialNull(object):
 
 
 class EsspApi(object):
-    READ_NOTE = 0xEF
-    CREDIT_NOTE = 0xEE
-    FRAUD_ATTEMPT = 0xE6
+    READ_NOTE = 0xEF  # 239
+    CREDIT_NOTE = 0xEE  # 238
+    FRAUD_ATTEMPT = 0xE6  # 230
     NOTE_CLEARED_FROM_RESET = 0xE1
     NOTE_CLEARED_INTO_CASHBOX = 0xE2
-    NOTE_REJECTING = 0xED
-    NOTE_REJECTED = 0xEC
-    DISABLED = 0xE8
-    STACKER_FULL = 0xE7
+    NOTE_REJECTING = 0xED  # 237
+    NOTE_REJECTED = 0xEC  # 236
+    DISABLED = 0xE8  # 232
+    STACKER_FULL = 0xE7  # 231
     SLAVE_RESET = 0xF1  # right after booting up
-    STACKING = 0xCC
-    STACKED = 0xEB
+    STACKING = 0xCC  # 204
+    STACKED = 0xEB  # 235
     CASH_BOX_REMOVED = 0xE3
     CASH_BOX_REPLACED = 0xE4
 
