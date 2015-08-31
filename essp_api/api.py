@@ -345,11 +345,11 @@ class EsspApi(object):
 
             response = [('%02x' % c).lower() for c in response]
 
-            self._logger.debug('[ESSP] RECIVE:  ' + ' '.join(response))
+            self._logger.debug('[ESSP] RECV:  ' + ' '.join(response))
 
             crc = self._crc(response[1:-2])
             if crc != response[-2:]:
-                self._logger.warn('[ESSP] RECIVE:  ' + ' '.join(response))
+                self._logger.warn('[ESSP] RECV:  ' + ' '.join(response))
                 self._logger.warn('[ESSP] Failed to verify crc: ' + str(crc))
 
             if len(response) < 6:
