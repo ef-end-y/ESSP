@@ -137,7 +137,8 @@ def essp_process(queue_request, queue_response, verbose, test):
         'display_on': lambda: essp.display_on,
         'display_off': lambda: essp.display_off,
     }
-    accept_note = False
+    do_accept_note = False
+    can_accept_note = False
     while True:
         try:
             data = queue_request.get(block=False)
@@ -146,6 +147,11 @@ def essp_process(queue_request, queue_response, verbose, test):
         else:
             logger.info('[HTTP ESSP] command: %s' % data['cmd'])
             cmd = data['cmd']
+            if cmd in ('start', 'reset', 'disable'):
+                can_accept_note = False
+                do_accept_note = False
+            elif cmd in ('enable',):
+                can_accept_note = True
             res = {'cmd': cmd, 'result': False}
             if cmd in cmds:
                 res['result'] = cmds[cmd]()()
@@ -153,21 +159,22 @@ def essp_process(queue_request, queue_response, verbose, test):
                 res['result'] = bool(essp.sync() and essp.enable_higher_protocol() and essp.disable() and
                                      essp.set_inhibits(essp.easy_inhibit([1, 1, 1, 1, 1, 1, 1]), '0'))
             elif cmd == 'accept':
-                accept_note = True
+                do_accept_note = True
                 res['result'] = True
             queue_response.put(res)
             continue
-        poll = essp.poll()
-        for event in poll:
-            status = event['status']
-            if status == EsspApi.DISABLED:
-                continue
-            if status == EsspApi.READ_NOTE:
+        if can_accept_note:
+            events = essp.poll()
+            for event in events:
+                status = event['status']
                 param = event['param']
-                logger.info('[HTTP ESSP] read note %s' % param if param else 'unknown yet')
-                if event['param'] and not accept_note:
-                    essp.hold()
-            queue_response.put({'cmd': 'poll', 'status': status, 'param': param})
+                if status == EsspApi.DISABLED:
+                    continue
+                if status == EsspApi.READ_NOTE:
+                    logger.info('[HTTP ESSP] read note %s' % (param if param else 'unknown yet'))
+                    if event['param'] and not do_accept_note:
+                        essp.hold()
+                queue_response.put({'cmd': 'poll', 'status': status, 'param': param})
         sleep(1)
 
 
