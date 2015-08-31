@@ -163,10 +163,11 @@ def essp_process(queue_request, queue_response, verbose, test):
             if status == EsspApi.DISABLED:
                 continue
             if status == EsspApi.READ_NOTE:
-                logger.info('[HTTP ESSP] read note %s' % event['param'] if event['param'] else 'unknown yet')
+                param = event['param']
+                logger.info('[HTTP ESSP] read note %s' % param if param else 'unknown yet')
                 if event['param'] and not accept_note:
                     essp.hold()
-            queue_response.put({'cmd': 'poll', 'status': status, 'param': event['param']})
+            queue_response.put({'cmd': 'poll', 'status': status, 'param': param})
         sleep(1)
 
 
