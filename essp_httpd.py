@@ -15,6 +15,8 @@ LOG_FILE = './essp_server.log'
 BIND_PORT = 8080
 BIND_ADDRESS = '127.0.0.1'
 
+HOLD_AND_WAIT_ACCEPT_CMD = False
+
 Queue_request = Queue()
 Queue_response = Queue()
 
@@ -152,7 +154,7 @@ def essp_process(queue_request, queue_response, verbose, test):
                 essp_state = 'disabled'
             elif cmd in ('enable',):
                 if essp_state == 'disabled':
-                    essp_state = 'enabled'
+                    essp_state = 'enabled' if HOLD_AND_WAIT_ACCEPT_CMD else 'accept'
             res = {'cmd': cmd, 'result': False}
             if cmd in cmds:
                 res['result'] = cmds[cmd]()()
