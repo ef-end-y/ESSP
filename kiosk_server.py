@@ -1,9 +1,13 @@
+import os
+import time
+import atexit
 import re
 import sys
 import logging
 import serial
 import json
 import argparse
+from signal import SIGTERM
 from wsgiref.simple_server import make_server
 from webob import Request, exc
 from essp_api import EsspApi
@@ -11,7 +15,7 @@ from time import sleep
 from multiprocessing import Process, Queue
 
 RESP_HEADERS = [('Access-Control-Allow-Origin', '*')]
-LOG_FILE = './essp_server.log'
+LOG_FILE = '/tmp/kiosk_server.log'
 BIND_PORT = 8080
 BIND_ADDRESS = '127.0.0.1'
 
@@ -77,13 +81,22 @@ def template_to_regex(template):
 
 
 class Router(object):
-    def __init__(self):
+    def __init__(self, params):
+        self.params = params
+        self.child = None
         self.routes = []
 
     def add_route(self, template, view, **kwargs):
         self.routes.append((re.compile(template_to_regex(template)), view, kwargs))
 
     def __call__(self, environ, start_response):
+        if not self.child or not self.child.is_alive():
+            self.child = Process(
+                target=note_acceptor_worker,
+                args=(Queue_request, Queue_response, self.params)
+            )
+            self.child.daemon = True
+            self.child.start()
         req = Request(environ)
         for regex, controller, kwvars in self.routes:
             match = regex.match(req.path_info)
@@ -123,13 +136,15 @@ class API(object):
         return data
 
 
-def essp_process(queue_request, queue_response, verbose, test):
-    if test:
+def note_acceptor_worker(queue_request, queue_response, params):
+    verbose = params.verbose
+    if params.test:
         serial.Serial = SerialMock
-    lh = logging.StreamHandler(sys.stdout) if verbose else None
+    lh = logging.FileHandler(params.logfile) if params.daemon else logging.StreamHandler(sys.stdout)
     verbose = verbose and verbose > 1
     essp = EsspApi('/dev/ttyACM0', logger_handler=lh, verbose=verbose)
     logger = essp.get_logger()
+    logger.info('[WORKER] Start')
     cmds = {
         'sync': lambda: essp.sync,
         'reset': lambda: essp.reset,
@@ -143,11 +158,16 @@ def essp_process(queue_request, queue_response, verbose, test):
     while True:
         try:
             data = queue_request.get(block=False)
-        except Exception:
+        except:
             pass
         else:
-            logger.info('[HTTP ESSP] command: %s' % data['cmd'])
+            logger.info('[WORKER] command: %s' % data['cmd'])
             cmd = data['cmd']
+            res = {'cmd': cmd, 'result': False}
+            if cmd == 'test':
+                res['result'] = True
+                queue_response.put(res)
+                continue
             if cmd in ('start', 'reset', 'disable'):
                 if essp_state == 'hold':
                     essp.reject_note()
@@ -155,7 +175,6 @@ def essp_process(queue_request, queue_response, verbose, test):
             elif cmd in ('enable',):
                 if essp_state == 'disabled':
                     essp_state = 'enabled' if HOLD_AND_WAIT_ACCEPT_CMD else 'accept'
-            res = {'cmd': cmd, 'result': False}
             if cmd in cmds:
                 res['result'] = cmds[cmd]()()
             elif cmd == 'start':
@@ -174,7 +193,7 @@ def essp_process(queue_request, queue_response, verbose, test):
                 if status == EsspApi.DISABLED:
                     continue
                 if status == EsspApi.READ_NOTE:
-                    logger.info('[HTTP ESSP] read note %s' % (param if param else 'unknown yet'))
+                    logger.info('[WORKER] read note %s' % (param if param else 'unknown yet'))
                     if event['param'] and essp_state == 'enabled':
                         essp_state = 'hold'
                         essp.hold()
@@ -183,48 +202,163 @@ def essp_process(queue_request, queue_response, verbose, test):
             essp.hold()
         sleep(1)
 
+        if os.getppid() == 1:
+            logger.info('[WORKER] Parent process has terminated')
+            break
 
-def start_server(namespace):
-    app = Router()
+
+def http_server_worker(params):
+    app = Router(params)
     app.add_route('/', API.index)
     app.add_route('/{cmd:sync|reset|enable|disable|hold|accept}', API.simple_cmd)
     app.add_route('/display_on', API.simple_cmd, cmd='display_on')
     app.add_route('/display_off', API.simple_cmd, cmd='display_off')
     app.add_route('/poll', API.poll)
     app.add_route('/start', API.simple_cmd, cmd='start')
-    httpd = make_server(namespace.host, int(namespace.port), app)
+    app.add_route('/test', API.simple_cmd, cmd='test')
+    httpd = make_server(params.host, int(params.port), app)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
         httpd.server_close()
 
 
-class Start(argparse.Action):
-    def __call__(self, parser, namespace, values, option_string=None):
-        p1 = Process(target=essp_process, args=(Queue_request, Queue_response, namespace.verbose, namespace.test))
-        p1.start()
-        p2 = Process(target=start_server, args=(namespace,))
-        p2.start()
+class Daemon:
+    def __init__(self, params):
+        logfile = params.logfile if params.daemon else None
+        self.stdin = '/dev/null'
+        self.stdout = logfile
+        self.stderr = logfile
+        self.params = params
+        self.children = []
+
+    def daemonize(self):
         try:
-            p1.join()
-            p2.join()
-        except KeyboardInterrupt:
-            print 'Keyboard interrupt'
-            p1.terminate()
-            p1.join()
-            p2.terminate()
-            p2.join()
+            pid = os.fork()
+            if pid > 0:
+                sys.exit(0)
+        except OSError, e:
+            sys.stderr.write('fork #1 failed: %d (%s)\n' % (e.errno, e.strerror))
+            sys.exit(1)
+
+        os.chdir('/')
+        os.setsid()
+        os.umask(0)
+
+        try:
+            pid = os.fork()
+            if pid > 0:
+                sys.exit(0)
+        except OSError, e:
+            sys.stderr.write('fork #2 failed: %d (%s)\n' % (e.errno, e.strerror))
+            sys.exit(1)
+
+        sys.stdout.flush()
+        sys.stderr.flush()
+        si = file(self.stdin, 'r')
+        so = file(self.stdout, 'a+')
+        se = file(self.stderr, 'a+', 0)
+        os.dup2(si.fileno(), sys.stdin.fileno())
+        os.dup2(so.fileno(), sys.stdout.fileno())
+        os.dup2(se.fileno(), sys.stderr.fileno())
+
+        atexit.register(self.delpid)
+        pid = str(os.getpid())
+        file(self.params.pidfile, 'w+').write("%s\n" % pid)
+
+    def delpid(self):
+        os.remove(self.params.pidfile)
+
+    def start(self):
+        try:
+            pf = file(self.params.pidfile, 'r')
+            pid = int(pf.read().strip())
+            pf.close()
+        except IOError:
+            pid = None
+
+        if pid:
+            message = 'pidfile %s already exist. Daemon already running?\n'
+            sys.stderr.write(message % self.params.pidfile)
+            sys.exit(1)
+
+        self.daemonize()
+        self.run()
+
+    def stop(self):
+        try:
+            pf = file(self.params.pidfile, 'r')
+            pid = int(pf.read().strip())
+            pf.close()
+        except IOError:
+            pid = None
+
+        if not pid:
+            message = 'pidfile %s does not exist. Daemon not running?\n'
+            sys.stderr.write(message % self.params.pidfile)
+            return
+
+        try:
+            while 1:
+                os.kill(pid, SIGTERM)
+                time.sleep(0.1)
+        except OSError, err:
+            err = str(err)
+            if err.find('No such process') > 0:
+                if os.path.exists(self.params.pidfile):
+                    os.remove(self.params.pidfile)
+            else:
+                print str(err)
+                sys.exit(1)
+
+    def restart(self):
+        self.stop()
+        self.start()
+
+    def run(self):
+        http_server_worker(self.params)
 
 
-p = argparse.ArgumentParser(description='Essp http server')
-p.add_argument('start', help='Start server', action=Start)
-p.add_argument('-p', '--port', default=BIND_PORT, help='Port to serve on (default %s)' % BIND_PORT)
-p.add_argument('-H', '--host', default=BIND_ADDRESS,
-               help='Host to serve on (default %s; 0.0.0.0 to make public)' % BIND_ADDRESS)
-p.add_argument('-t', '--test', help='Test', action='count')
-p.add_argument('-v', '--verbose', action='count', help='-vv: very verbose')
-args = p.parse_args()
+def start(params):
+    daemon = Daemon(params)
+    daemon.start()
 
 
+def restart(params):
+    daemon = Daemon(params)
+    daemon.restart()
 
 
+def stop(params):
+    daemon = Daemon(params)
+    daemon.stop()
+
+
+def run(params):
+    daemon = Daemon(params)
+    daemon.run()
+
+daemon_params = argparse.ArgumentParser(add_help=False)
+daemon_params.add_argument('-p', '--pidfile', default='/tmp/kiosk_server.pid', help='Pid for daemon')
+daemon_params.add_argument('-l', '--logfile', default=LOG_FILE, help='Logfile')
+run_params = argparse.ArgumentParser(add_help=False)
+run_params.add_argument('-t', '--test', help='Test', action='count')
+run_params.add_argument('-v', '--verbose', action='count', help='-vv: very verbose')
+run_params.add_argument('-P', '--port', default=BIND_PORT, help='Port to serve on (default %s)' % BIND_PORT)
+run_params.add_argument('-H', '--host', default=BIND_ADDRESS,
+                        help='Host to serve on (default %s; 0.0.0.0 to make public)' % BIND_ADDRESS)
+
+parser = argparse.ArgumentParser(description='Kiosk http server. Help: %(prog)s start -h')
+p = parser.add_subparsers()
+sp_start = p.add_parser('start', parents=[run_params, daemon_params], help='Starts %(prog)s daemon')
+sp_stop = p.add_parser('stop', parents=[daemon_params], help='Stops %(prog)s daemon')
+sp_restart = p.add_parser('restart', parents=[daemon_params], help='Restarts %(prog)s daemon')
+sp_run = p.add_parser('run', parents=[run_params], help='Run in foreground')
+
+sp_start.set_defaults(func=start, daemon=True)
+sp_stop.set_defaults(func=stop, daemon=True)
+sp_restart.set_defaults(func=restart, daemon=True)
+sp_run.set_defaults(func=run, daemon=False)
+
+args = parser.parse_args()
+args.func(args)
