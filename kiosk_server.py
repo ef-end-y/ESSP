@@ -1,5 +1,5 @@
+# -*- coding: utf-8 -*-
 import os
-import time
 import atexit
 import re
 import sys
@@ -10,20 +10,40 @@ import argparse
 from signal import SIGTERM
 from wsgiref.simple_server import make_server
 from webob import Request, exc
-from essp_api import EsspApi
 from time import sleep
 from multiprocessing import Process, Queue
+from subprocess import Popen, PIPE
+from essp_api import EsspApi
 
 RESP_HEADERS = [('Access-Control-Allow-Origin', '*')]
+LPR_PATH = '/usr/bin/lpr'
+PRINTER_NAME = 'CUSTOM_Engineering_VKP80'
 LOG_FILE = '/tmp/kiosk_server.log'
 BIND_PORT = 8080
 BIND_ADDRESS = '127.0.0.1'
 
 HOLD_AND_WAIT_ACCEPT_CMD = False
 
-Queue_request = Queue()
-Queue_response = Queue()
+CHECK_TEMPLATE = '''
+"Sistema" ltd ИНН:1401552291
+Терминал No 4565
+ул.20 Января 6
+08.09.2015
 
+Наличные за услугу Доступ в Интернет
+
+имя клиента : {fio}
+Логин: {name}
+Получено: {credit} azn
+Операция No: {order_id}
+
+
+Просьба не выбрасывать чек до поступления средств на ваш счёт
+
+Тел :012 4081498
+График с 10.00-18.00
+http://sistema.az
+'''
 
 class SerialMock(object):
     POLL_CMD = ('7f0001071188'.decode('hex'), '7f8001071202'.decode('hex'))
@@ -57,43 +77,38 @@ class SerialMock(object):
         return len(self.response)
 
 
-var_regex = re.compile(r'''
-    \{          # The exact character "{"
-    (\w+)       # The variable name (restricted to a-z, 0-9, _)
-    (?::([^}]+))? # The optional :regex part
-    \}          # The exact character "}"
-    ''', re.VERBOSE)
-
-
-def template_to_regex(template):
-    regex = ''
-    last_pos = 0
-    for match in var_regex.finditer(template):
-        regex += re.escape(template[last_pos:match.start()])
-        var_name = match.group(1)
-        expr = match.group(2) or '[^/]+'
-        expr = '(?P<%s>%s)' % (var_name, expr)
-        regex += expr
-        last_pos = match.end()
-    regex += re.escape(template[last_pos:])
-    regex = '^%s$' % regex
-    return regex
-
-
-class Router(object):
+class App(object):
     def __init__(self, params):
         self.params = params
         self.child = None
         self.routes = []
+        self.queue_request = Queue()
+        self.queue_response = Queue()
+
+    @staticmethod
+    def _template_to_regex(template):
+        regex = ''
+        last_pos = 0
+        var_regex = re.compile(r'\{(\w+)(?::([^}]+))?\}', re.VERBOSE)
+        for match in var_regex.finditer(template):
+            regex += re.escape(template[last_pos:match.start()])
+            var_name = match.group(1)
+            expr = match.group(2) or '[^/]+'
+            expr = '(?P<%s>%s)' % (var_name, expr)
+            regex += expr
+            last_pos = match.end()
+        regex += re.escape(template[last_pos:])
+        regex = '^%s$' % regex
+        return regex
 
     def add_route(self, template, view, **kwargs):
-        self.routes.append((re.compile(template_to_regex(template)), view, kwargs))
+        self.routes.append((re.compile(self._template_to_regex(template)), view, kwargs))
 
     def __call__(self, environ, start_response):
         if not self.child or not self.child.is_alive():
             self.child = Process(
                 target=note_acceptor_worker,
-                args=(Queue_request, Queue_response, self.params)
+                args=(self.queue_request, self.queue_response, self.params)
             )
             self.child.daemon = True
             self.child.start()
@@ -110,30 +125,33 @@ class Router(object):
                 return [res]
         return exc.HTTPNotFound()(environ, start_response)
 
-
-class API(object):
-    queue_request = Queue_request
-    queue_response = Queue_response
-
-    @staticmethod
-    def index(req):
+    def index(self, req):
         return 'ok'
 
-    @staticmethod
-    def simple_cmd(req):
+    def simple_cmd(self, req):
         cmd = req.urlvars['cmd']
-        API.queue_request.put({'cmd': cmd})
+        self.queue_request.put({'cmd': cmd})
         return 'ok'
 
-    @staticmethod
-    def poll(req):
+    def poll(self, req):
         data = []
         while True:
             try:
-                data.append(API.queue_response.get(block=False))
+                data.append(self.queue_response.get(block=False))
             except Exception:
                 break
         return data
+
+    def print_check(self, req):
+        try:
+            check = CHECK_TEMPLATE.format(**req.POST)
+        except:
+            return 'input data error'
+        print check
+        # lpr = Popen([LPR_PATH, '-P', PRINTER_NAME], stdin=PIPE)
+        # lpr.stdin.write('Test1234\n')
+        # lpr.stdin.flush()
+        return 'ok'
 
 
 def note_acceptor_worker(queue_request, queue_response, params):
@@ -208,14 +226,15 @@ def note_acceptor_worker(queue_request, queue_response, params):
 
 
 def http_server_worker(params):
-    app = Router(params)
-    app.add_route('/', API.index)
-    app.add_route('/{cmd:sync|reset|enable|disable|hold|accept}', API.simple_cmd)
-    app.add_route('/display_on', API.simple_cmd, cmd='display_on')
-    app.add_route('/display_off', API.simple_cmd, cmd='display_off')
-    app.add_route('/poll', API.poll)
-    app.add_route('/start', API.simple_cmd, cmd='start')
-    app.add_route('/test', API.simple_cmd, cmd='test')
+    app = App(params)
+    app.add_route('/', app.index)
+    app.add_route('/{cmd:sync|reset|enable|disable|hold|accept}', app.simple_cmd)
+    app.add_route('/display_on', app.simple_cmd, cmd='display_on')
+    app.add_route('/display_off', app.simple_cmd, cmd='display_off')
+    app.add_route('/poll', app.poll)
+    app.add_route('/start', app.simple_cmd, cmd='start')
+    app.add_route('/test', app.simple_cmd, cmd='test')
+    app.add_route('/print', app.print_check)
     httpd = make_server(params.host, int(params.port), app)
     try:
         httpd.serve_forever()
@@ -301,7 +320,7 @@ class Daemon:
         try:
             while 1:
                 os.kill(pid, SIGTERM)
-                time.sleep(0.1)
+                sleep(0.1)
         except OSError, err:
             err = str(err)
             if err.find('No such process') > 0:
