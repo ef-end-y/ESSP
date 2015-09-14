@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 import os
-import atexit
 import re
 import sys
-import logging
-import serial
 import json
+import cups
+import serial
+import atexit
+import logging
 import argparse
 import datetime
 from signal import SIGTERM
@@ -13,13 +14,13 @@ from wsgiref.simple_server import make_server
 from webob import Request, exc
 from time import sleep
 from multiprocessing import Process, Queue
-from subprocess import Popen, PIPE
 from essp_api import EsspApi
 
 RESP_HEADERS = [('Access-Control-Allow-Origin', '*')]
 LPR_PATH = '/usr/bin/lpr'
 PRINTER_NAME = 'CUSTOM_Engineering_VKP80'
 LOG_FILE = '/tmp/kiosk_server.log'
+CHECKS_DIR = '/tmp/'
 BIND_PORT = 8080
 BIND_ADDRESS = '127.0.0.1'
 
@@ -153,9 +154,20 @@ class App(object):
             check = CHECK_TEMPLATE.format(**data)
         except:
             return 'input data error'
-        lpr = Popen([LPR_PATH, '-P', PRINTER_NAME], stdin=PIPE)
-        lpr.stdin.write(check.encode('utf8'))
-        lpr.stdin.flush()
+        filename = '%s%s' % (CHECKS_DIR, data['order_id'])
+        try:
+            f = open(filename, 'w+')
+        except:
+            return 'internal error'
+        else:
+            try:
+                f.write(check.encode('utf8'))
+            finally:
+                f.close()
+            conn = cups.Connection()
+            printers = conn.getPrinters()
+            printer_name = printers.keys()[0]
+            conn.printFile(printer_name, filename, 'Python_Status_print', {})
         return 'ok'
 
 
