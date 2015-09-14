@@ -154,9 +154,9 @@ class App(object):
         except:
             return 'input data error'
         print check
-        # lpr = Popen([LPR_PATH, '-P', PRINTER_NAME], stdin=PIPE)
-        # lpr.stdin.write('Test1234\n')
-        # lpr.stdin.flush()
+        lpr = Popen([LPR_PATH, '-P', PRINTER_NAME], stdin=PIPE)
+        lpr.stdin.write(check)
+        lpr.stdin.flush()
         return 'ok'
 
 
