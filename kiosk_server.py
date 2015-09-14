@@ -154,7 +154,7 @@ class App(object):
         except:
             return 'input data error'
         lpr = Popen([LPR_PATH, '-P', PRINTER_NAME], stdin=PIPE)
-        lpr.stdin.write(check)
+        lpr.stdin.write(check.encody('utf8'))
         lpr.stdin.flush()
         return 'ok'
 
