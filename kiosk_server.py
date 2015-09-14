@@ -154,20 +154,28 @@ class App(object):
             check = CHECK_TEMPLATE.format(**data)
         except:
             return 'input data error'
+
         filename = '%s%s' % (CHECKS_DIR, data['order_id'])
         try:
             f = open(filename, 'w+')
         except:
-            return 'internal error'
-        else:
-            try:
-                f.write(check.encode('utf8'))
-            finally:
-                f.close()
+            return 'error save the check to disk'
+
+        try:
+            f.write(check.encode('utf8'))
+        except:
+            return 'error save the check to disk'
+        finally:
+            f.close()
+
+        try:
             conn = cups.Connection()
             printers = conn.getPrinters()
             printer_name = printers.keys()[0]
             conn.printFile(printer_name, filename, 'Python_Status_print', {})
+        except:
+            return 'check printing error'
+
         return 'ok'
 
 
