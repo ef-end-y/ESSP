@@ -7,6 +7,7 @@ import logging
 import serial
 import json
 import argparse
+import datetime
 from signal import SIGTERM
 from wsgiref.simple_server import make_server
 from webob import Request, exc
@@ -24,16 +25,16 @@ BIND_ADDRESS = '127.0.0.1'
 
 HOLD_AND_WAIT_ACCEPT_CMD = False
 
-CHECK_TEMPLATE = '''
+CHECK_TEMPLATE = u'''
 "Sistema" ltd ИНН:1401552291
 Терминал No 4565
 ул.20 Января 6
-08.09.2015
+{date}
 
 Наличные за услугу Доступ в Интернет
 
 имя клиента : {fio}
-Логин: {name}
+Логин: {login}
 Получено: {credit} azn
 Операция No: {order_id}
 
@@ -44,6 +45,7 @@ CHECK_TEMPLATE = '''
 График с 10.00-18.00
 http://sistema.az
 '''
+
 
 class SerialMock(object):
     POLL_CMD = ('7f0001071188'.decode('hex'), '7f8001071202'.decode('hex'))
@@ -143,8 +145,12 @@ class App(object):
         return data
 
     def print_check(self, req):
+        data = {
+            'date': datetime.datetime.now().strftime('%d.%m.%Y'),
+        }
+        data.update(req.POST)
         try:
-            check = CHECK_TEMPLATE.format(**req.POST)
+            check = CHECK_TEMPLATE.format(**data)
         except:
             return 'input data error'
         print check
